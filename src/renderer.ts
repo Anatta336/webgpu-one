@@ -200,6 +200,11 @@ export default class Renderer {
 
     // Resize swapchain, frame buffer attachments
     resizeBackings() {
+        if (!this.device) {
+            // Haven't initialized yet.
+            return;
+        }
+
         // Swapchain
         if (!this.context) {
             this.context = this.canvas.getContext('webgpu');

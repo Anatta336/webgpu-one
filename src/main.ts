@@ -1,11 +1,11 @@
 import Renderer from './renderer';
+import CanvasSizer from './canvasSizer';
 
+const container = document.getElementById('gfx-container') as HTMLElement;
 const canvas = document.getElementById('gfx') as HTMLCanvasElement;
-canvas.width = canvas.height = 640;
+
 const renderer = new Renderer(canvas);
-
-console.log('starting', renderer);
-
 renderer.start();
 
-
+const sizer = new CanvasSizer(canvas, container, renderer);
+sizer.start();
