@@ -3,7 +3,15 @@ Heavily indebted to https://github.com/alaingalvan/webgpu-seed
 
 ## Local
 ```
-docker run -u 1000 --rm -it --entrypoint /bin/bash -v "$(pwd)":/app -w /app node:20.9.0
+docker run -u 1000 --rm -it \
+  --entrypoint /bin/bash \
+  -v "$(pwd)":/app -w /app \
+  node:20.9.0
+npm i
+npm run watch
+```
+```
+docker-compose up -d
 ```
 
 WebGPU needs a secure context. `localhost` is treated as secure (even though it's not over HTTPS). From `chrome://flags/` you can add other domains to "Insecure origins treated as secure".
