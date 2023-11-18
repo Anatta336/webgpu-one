@@ -1,21 +1,37 @@
 import vertShaderCode from './shaders/triangle.vert.wgsl';
 import fragShaderCode from './shaders/triangle.frag.wgsl';
+import { createBufferFromArray } from './bufferHelpers';
+import { colorBufferDesc, positionBufferDesc } from './sharedBufferLayouts';
 
-// Position Vertex Buffer Data
-const positions = new Float32Array([
-     1.0, -1.0,  0.0,
-    -1.0, -1.0,  0.0,
-     0.0,  1.0,  0.0
+const basicTrianglePositions = new Float32Array([
+     1.0, -1.0,  0.0, // bottom right
+    -1.0, -1.0,  0.0, // bottom left
+     0.0,  1.0,  0.0, // top
 ]);
-// Color Vertex Buffer Data
-const colors = new Float32Array([
+const basicSquarePositions = new Float32Array([
+     1.0, -1.0,  0.0, // bottom right
+    -1.0, -1.0,  0.0, // bottom left
+     1.0,  1.0,  0.0, // top right
+    -1.0,  1.0,  0.0, // top left
+]);
+
+const basicTriangleColors = new Float32Array([
     1.0, 0.0, 0.0, // red
     0.0, 1.0, 0.0, // green
     0.0, 0.0, 1.0, // blue
 ]);
+const basicSquareColors = new Float32Array([
+    1.0, 0.0, 0.0, // red
+    0.0, 1.0, 0.0, // green
+    0.0, 0.0, 1.0, // blue
+    1.0, 0.0, 1.0, // magenta
+]);
 
-// Index Buffer Data
-const indices = new Uint16Array([0, 1, 2]);
+const basicTriangleIndices = new Uint16Array([0, 1, 2]);
+const basicSquareIndices = new Uint16Array([
+    0, 1, 2,
+    1, 2, 3,
+]);
 
 export default class Renderer {
     canvas: HTMLCanvasElement;
@@ -85,39 +101,11 @@ export default class Renderer {
     // Initialize resources to render something (buffers, shaders, pipeline)
     async initializeResources() {
         // Buffers
-        const createBuffer = (
-            array: Float32Array | Uint16Array,
-            usage: number
-        ) => {
-            // Create a GPUBuffer.
-            const buffer: GPUBuffer = this.device.createBuffer({
-                // Align to 4 bytes.
-                size: (array.byteLength + 3) & ~3,
-                // See GPUBufferUsageFlags.
-                usage,
-                mappedAtCreation: true,
-            });
+        this.positionBuffer = createBufferFromArray(this.device, basicSquarePositions, GPUBufferUsage.VERTEX);
+        this.colorBuffer = createBufferFromArray(this.device, basicSquareColors, GPUBufferUsage.VERTEX);
+        this.indexBuffer = createBufferFromArray(this.device, basicSquareIndices, GPUBufferUsage.INDEX);
 
-            // Write the contents of the array to the GPUBuffer.
-            if (array instanceof Uint16Array) {
-                new Uint16Array(buffer.getMappedRange()).set(array);
-            } else if (array instanceof Float32Array) {
-                new Float32Array(buffer.getMappedRange()).set(array);
-            } else {
-                throw new Error(`Attempt to create buffer for unsupport array: ${typeof array}`);
-            }
-
-            // Unmapping means CPU-land releases claim, and the GPU can use it.
-            buffer.unmap();
-
-            return buffer;
-        };
-
-        this.positionBuffer = createBuffer(positions, GPUBufferUsage.VERTEX);
-        this.colorBuffer = createBuffer(colors, GPUBufferUsage.VERTEX);
-        this.indexBuffer = createBuffer(indices, GPUBufferUsage.INDEX);
-
-        // Crate shader modules - no code yet.
+        // Crate shader modules, pulling in code from imported files.
         this.vertModule = this.device.createShaderModule({
             code: vertShaderCode
         });
@@ -127,28 +115,6 @@ export default class Renderer {
         });
 
         // Graphics Pipeline
-
-        // Input Assembly
-        const positionAttribDesc: GPUVertexAttribute = {
-            shaderLocation: 0, // [[location(0)]]
-            offset: 0,
-            format: 'float32x3'
-        };
-        const colorAttribDesc: GPUVertexAttribute = {
-            shaderLocation: 1, // [[location(1)]]
-            offset: 0,
-            format: 'float32x3'
-        };
-        const positionBufferDesc: GPUVertexBufferLayout = {
-            attributes: [positionAttribDesc],
-            arrayStride: 4 * 3, // sizeof(float) * 3
-            stepMode: 'vertex'
-        };
-        const colorBufferDesc: GPUVertexBufferLayout = {
-            attributes: [colorAttribDesc],
-            arrayStride: 4 * 3, // sizeof(float) * 3
-            stepMode: 'vertex'
-        };
 
         // Depth and stencil state.
         const depthStencil: GPUDepthStencilState = {
@@ -279,7 +245,7 @@ export default class Renderer {
         this.passEncoder.setVertexBuffer(0, this.positionBuffer);
         this.passEncoder.setVertexBuffer(1, this.colorBuffer);
         this.passEncoder.setIndexBuffer(this.indexBuffer, 'uint16');
-        this.passEncoder.drawIndexed(3, 1);
+        this.passEncoder.drawIndexed(basicSquareIndices.length, 1);
         this.passEncoder.end();
 
         // In this case we only put one command buffer in the queue, but can have many.

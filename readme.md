@@ -29,6 +29,15 @@ If a device has multiple adapters (most commonly a dedicated and an integrated G
 ### Resources
 - Uniforms, attributes, and textures are assigned numbers in the shader and addressed by that number rather than by name.
 
+### Bind Group
+Bind group layout defines the input/output interface expected by a shader.
+
+Bind group represents the actual input/output data for a shader.
+
+## Excution timing
+`GPUCommandEncoder` (from `device.createCommandEncoder()`) builds batch of buffered commands which will be sent to the GPU for async excution.
+
+`GPUBuffer` methods are not buffered, and get executed atomically when called.
 
 
 ## References
