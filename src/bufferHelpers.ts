@@ -1,9 +1,8 @@
 export function createBufferFromArray(
     device: GPUDevice,
-    array: Float32Array | Uint16Array,
+    array: Float32Array | Int32Array | Uint16Array | Int16Array,
     usage: number
 ) {
-    // Create a GPUBuffer.
     const buffer: GPUBuffer = device.createBuffer({
         // Align to 4 bytes.
         size: (array.byteLength + 3) & ~3,
@@ -15,9 +14,17 @@ export function createBufferFromArray(
     // Write the contents of the array to the GPUBuffer.
     if (array instanceof Uint16Array) {
         new Uint16Array(buffer.getMappedRange()).set(array);
-    } else if (array instanceof Float32Array) {
+    }
+    else if (array instanceof Int16Array) {
+        new Int16Array(buffer.getMappedRange()).set(array);
+    }
+    else if (array instanceof Int32Array) {
+        new Int32Array(buffer.getMappedRange()).set(array);
+    }
+    else if (array instanceof Float32Array) {
         new Float32Array(buffer.getMappedRange()).set(array);
-    } else {
+    }
+    else {
         throw new Error(`Attempt to create buffer for unsupport array: ${typeof array}`);
     }
 
