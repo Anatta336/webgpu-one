@@ -39,6 +39,10 @@ Bind group represents the actual input/output data for a shader.
 
 `GPUBuffer` methods are not buffered, and get executed atomically when called.
 
+## Axes
+- X axis is right.
+- Y axis is down in framebuffer, viewport, fragment coordinates. Up in clip space.
+- Z axis is away from the screen (0 is near)
 
 ## References
 - https://www.w3.org/TR/webgpu/
@@ -46,3 +50,6 @@ Bind group represents the actual input/output data for a shader.
 - https://cohost.org/mcc/post/1406157-i-want-to-talk-about
 - https://alain.xyz/blog/raw-webgpu
 - https://webgpu.github.io/webgpu-samples
+- https://developer.chrome.com/blog/from-webgl-to-webgpu/
+- https://toji.dev/webgpu-best-practices/compute-vertex-data.html
+- https://github.com/greggman/webgpu-utils

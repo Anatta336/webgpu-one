@@ -1,6 +1,6 @@
 export function createBufferFromArray(
     device: GPUDevice,
-    array: Float32Array | Int32Array | Uint16Array | Int16Array,
+    array: Float32Array | Uint32Array | Int32Array | Uint16Array | Int16Array,
     usage: number
 ) {
     const buffer: GPUBuffer = device.createBuffer({
@@ -17,6 +17,9 @@ export function createBufferFromArray(
     }
     else if (array instanceof Int16Array) {
         new Int16Array(buffer.getMappedRange()).set(array);
+    }
+    else if (array instanceof Uint32Array) {
+        new Uint32Array(buffer.getMappedRange()).set(array);
     }
     else if (array instanceof Int32Array) {
         new Int32Array(buffer.getMappedRange()).set(array);

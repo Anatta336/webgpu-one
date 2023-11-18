@@ -1,5 +1,6 @@
-@group(0) @binding(0) var<storage, read> inValues: array<i32>;
-@group(0) @binding(1) var<storage, read_write> outValues: array<i32>;
+@group(0) @binding(0) var<storage, read> inValues: array<u32>;
+@group(0) @binding(1) var<storage, read_write> outValues: array<u32>;
+@group(0) @binding(2) var<storage, read_write> nextIndex: atomic<u32>;
 
 @compute @workgroup_size(3, 3)
 fn main(@builtin(global_invocation_id) global_id: vec3u) {
@@ -9,7 +10,14 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
         return;
     }
 
-    var inValue: i32 = inValues[global_id.x + global_id.y * 3];
+    var inputIndex: u32 = global_id.x + global_id.y * 3;
+    var inValue: u32 = inValues[inputIndex];
 
-    outValues[global_id.x + global_id.y * 3] = (1 - inValue);
+    if (inValue == 0) {
+        // Skip.
+        return;
+    }
+
+    var indexToWriteTo: u32 = atomicAdd(&nextIndex, 1);
+    outValues[indexToWriteTo] = inputIndex;
 }

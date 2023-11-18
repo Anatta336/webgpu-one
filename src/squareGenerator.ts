@@ -1,7 +1,7 @@
 import { createBufferFromArray } from "./bufferHelpers";
 import computeShaderCode from './shaders/square.compute.wgsl';
 
-const dummyInput = new Int32Array([
+const dummyInput = new Uint32Array([
     0, 1, 1,
     1, 1, 0,
     0, 1, 0,
@@ -20,6 +20,7 @@ export default class SquareGenerator {
 
     writeBuffer: GPUBuffer;
     inputBuffer: GPUBuffer; // <- used by shader
+    countBuffer: GPUBuffer; // <- used by shader
     outputBuffer: GPUBuffer; // <- used by shader
     readBuffer: GPUBuffer;
 
@@ -60,6 +61,16 @@ export default class SquareGenerator {
             // Going copy from another buffer, and read from on the shader.
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
+
+        this.countBuffer = this.device.createBuffer({
+            // 4 bytes for single u32 value.
+            size: 4,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+            mappedAtCreation: true,
+        });
+        // Initialise counter to 0.
+        new Uint32Array(this.countBuffer.getMappedRange())[0] = 0;
+        this.countBuffer.unmap();
 
         this.outputBuffer = this.device.createBuffer({
             size: this.inputBuffer.size,
@@ -106,6 +117,12 @@ export default class SquareGenerator {
                         buffer: this.outputBuffer,
                     },
                 },
+                { // Count
+                    binding: 2,
+                    resource: {
+                        buffer: this.countBuffer,
+                    },
+                },
             ],
         });
 
@@ -142,6 +159,6 @@ export default class SquareGenerator {
         await this.readBuffer.mapAsync(GPUMapMode.READ);
         const readBufferContent = this.readBuffer.getMappedRange();
 
-        console.log('after compute:', new Int32Array(readBufferContent));
+        console.log('after compute:', new Uint32Array(readBufferContent));
     }
 }
