@@ -54,6 +54,7 @@ Bind group represents the actual input/output data for a shader.
 
 ## References
 - https://www.w3.org/TR/webgpu/
+- https://www.w3.org/TR/WGSL/
 - https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API
 - https://cohost.org/mcc/post/1406157-i-want-to-talk-about
 - https://alain.xyz/blog/raw-webgpu
@@ -61,3 +62,21 @@ Bind group represents the actual input/output data for a shader.
 - https://developer.chrome.com/blog/from-webgl-to-webgpu/
 - https://toji.dev/webgpu-best-practices/compute-vertex-data.html
 - https://github.com/greggman/webgpu-utils
+
+## TODO
+- [x] Compute generate squares in vertex and index buffer.
+- [ ] Static perspective camera.
+- [ ] Fly camera.
+- [ ] Simple cubes.
+- [ ] Nicer rendering.
+- [ ] Voxel generation, compute.
+- [ ] Placement, compute.
+
+Interaction with voxel data could be via compute shader, or just like:
+```
+device.queue.writeBuffer(
+    voxelBuffer,
+    31 * 4,
+    [1]
+);
+```

@@ -1,25 +1,15 @@
 import vertShaderCode from './shaders/triangle.vert.wgsl';
 import fragShaderCode from './shaders/triangle.frag.wgsl';
 import { createBufferFromArray } from './bufferHelpers';
-import { colorBufferDesc, positionBufferDesc } from './sharedBufferLayouts';
+import { positionBufferDesc } from './sharedBufferLayouts';
 
-const basicTrianglePositions = new Float32Array([
-     1.0, -1.0,  0.0, // bottom right
-    -1.0, -1.0,  0.0, // bottom left
-     0.0,  1.0,  0.0, // top
-]);
 const basicSquarePositions = new Float32Array([
-     1.0, -1.0,  0.0, // bottom right
-    -1.0, -1.0,  0.0, // bottom left
-     1.0,  1.0,  0.0, // top right
-    -1.0,  1.0,  0.0, // top left
+     1.0, -1.0,  0.0, 1.0, // bottom right
+    -1.0, -1.0,  0.0, 1.0, // bottom left
+     0.8,  0.6,  0.0, 1.0, // top right
+    -1.0,  1.0,  0.0, 1.0, // top left
 ]);
 
-const basicTriangleColors = new Float32Array([
-    1.0, 0.0, 0.0, // red
-    0.0, 1.0, 0.0, // green
-    0.0, 0.0, 1.0, // blue
-]);
 const basicSquareColors = new Float32Array([
     1.0, 0.0, 0.0, // red
     0.0, 1.0, 0.0, // green
@@ -27,11 +17,14 @@ const basicSquareColors = new Float32Array([
     1.0, 0.0, 1.0, // magenta
 ]);
 
-const basicTriangleIndices = new Uint16Array([0, 1, 2]);
-const basicSquareIndices = new Uint16Array([
+const basicSquareIndices = new Uint32Array([
     0, 1, 2,
     1, 2, 3,
 ]);
+
+const maxQuadCount = 256;
+const maxVertexCount = maxQuadCount * 4;
+const maxIndexCount = maxQuadCount * 6;
 
 export default class Renderer {
     canvas: HTMLCanvasElement;
@@ -50,14 +43,12 @@ export default class Renderer {
 
     // Resources
     positionBuffer: GPUBuffer;
-    colorBuffer: GPUBuffer;
     indexBuffer: GPUBuffer;
     vertModule: GPUShaderModule;
     fragModule: GPUShaderModule;
     pipeline: GPURenderPipeline;
 
-    commandEncoder: GPUCommandEncoder;
-    passEncoder: GPURenderPassEncoder;
+    indexCount = (3 * 2) * 6;
 
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
@@ -101,9 +92,25 @@ export default class Renderer {
     // Initialize resources to render something (buffers, shaders, pipeline)
     async initializeResources() {
         // Buffers
-        this.positionBuffer = createBufferFromArray(this.device, basicSquarePositions, GPUBufferUsage.VERTEX);
-        this.colorBuffer = createBufferFromArray(this.device, basicSquareColors, GPUBufferUsage.VERTEX);
-        this.indexBuffer = createBufferFromArray(this.device, basicSquareIndices, GPUBufferUsage.INDEX);
+        this.positionBuffer = this.device.createBuffer({
+            // 4 bytes per component of vec4 for position.
+            size: ((maxVertexCount * 4 * 4) + 3) & ~3,
+            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+            mappedAtCreation: true,
+        });
+        new Float32Array(this.positionBuffer.getMappedRange()).set(basicSquarePositions);
+        this.positionBuffer.unmap();
+
+        this.indexBuffer = this.device.createBuffer({
+            // 4 bytes per index.
+            size: ((maxIndexCount * 4) + 3) & ~3,
+            usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
+            mappedAtCreation: true,
+        });
+        new Uint32Array(this.indexBuffer.getMappedRange()).set(basicSquareIndices);
+        this.indexBuffer.unmap();
+
+        this.indexCount = basicSquareIndices.length;
 
         // Crate shader modules, pulling in code from imported files.
         this.vertModule = this.device.createShaderModule({
@@ -131,7 +138,7 @@ export default class Renderer {
         const vertex: GPUVertexState = {
             module: this.vertModule,
             entryPoint: 'main',
-            buffers: [positionBufferDesc, colorBufferDesc]
+            buffers: [positionBufferDesc]
         };
 
         // Color/Blend State
@@ -162,6 +169,29 @@ export default class Renderer {
             depthStencil
         };
         this.pipeline = this.device.createRenderPipeline(pipelineDesc);
+    }
+
+    copyInMeshBuffers(vertexBuffer: GPUBuffer, indexBuffer: GPUBuffer, indexCount: number): void {
+        const commandEncoder = this.device.createCommandEncoder();
+
+        commandEncoder.copyBufferToBuffer(
+            vertexBuffer, 0,
+            this.positionBuffer, 0,
+            vertexBuffer.size
+        );
+        commandEncoder.copyBufferToBuffer(
+            indexBuffer, 0,
+            this.indexBuffer, 0,
+            indexBuffer.size
+        );
+
+        this.queue.submit([commandEncoder.finish()]);
+
+        this.queue.onSubmittedWorkDone().then(() => {
+            this.indexCount = indexCount;
+
+            console.log('Buffer copy complete.');
+        });
     }
 
     // Resize swapchain, frame buffer attachments
@@ -223,12 +253,12 @@ export default class Renderer {
             depthStencilAttachment: depthAttachment
         };
 
-        this.commandEncoder = this.device.createCommandEncoder();
+        const commandEncoder = this.device.createCommandEncoder();
 
         // Encode drawing commands
-        this.passEncoder = this.commandEncoder.beginRenderPass(renderPassDesc);
-        this.passEncoder.setPipeline(this.pipeline);
-        this.passEncoder.setViewport(
+        const passEncoder = commandEncoder.beginRenderPass(renderPassDesc);
+        passEncoder.setPipeline(this.pipeline);
+        passEncoder.setViewport(
             0,
             0,
             this.canvas.width,
@@ -236,20 +266,19 @@ export default class Renderer {
             0,
             1
         );
-        this.passEncoder.setScissorRect(
+        passEncoder.setScissorRect(
             0,
             0,
             this.canvas.width,
             this.canvas.height
         );
-        this.passEncoder.setVertexBuffer(0, this.positionBuffer);
-        this.passEncoder.setVertexBuffer(1, this.colorBuffer);
-        this.passEncoder.setIndexBuffer(this.indexBuffer, 'uint16');
-        this.passEncoder.drawIndexed(basicSquareIndices.length, 1);
-        this.passEncoder.end();
+        passEncoder.setVertexBuffer(0, this.positionBuffer);
+        passEncoder.setIndexBuffer(this.indexBuffer, 'uint32');
+        passEncoder.drawIndexed(this.indexCount, 1);
+        passEncoder.end();
 
         // In this case we only put one command buffer in the queue, but can have many.
-        this.queue.submit([this.commandEncoder.finish()]);
+        this.queue.submit([commandEncoder.finish()]);
     }
 
     render = () => {

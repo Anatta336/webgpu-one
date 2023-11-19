@@ -2,6 +2,10 @@ import { createBufferFromArray } from "./bufferHelpers";
 import computeShaderCode from './shaders/square.compute.wgsl';
 
 const dummyInput = new Uint32Array([
+    // First 3 values are dimensions.
+    3, 3, 1,
+
+    // Then the actual voxel data.
     0, 1, 1,
     1, 1, 0,
     0, 1, 0,
@@ -14,31 +18,56 @@ export default class SquareGenerator {
     device: GPUDevice;
     queue: GPUQueue;
 
-    squareCount: number;
-    vertexCount: number;
-    bytesPerVertex: number;
+    maxSquareCount: number;
+    maxVertexCount: number;
+    maxIndexCount: number;
 
-    writeBuffer: GPUBuffer;
-    inputBuffer: GPUBuffer; // <- used by shader
-    countBuffer: GPUBuffer; // <- used by shader
-    outputBuffer: GPUBuffer; // <- used by shader
-    readBuffer: GPUBuffer;
+    // 3 floats for position.
+    bytesPerVertex: number = 4 * 3;
+
+    /**
+     * Voxel buffer to be mapped and written to by CPU.
+     * Each voxel is a u32 value.
+     */
+    mappedVoxelBuffer: GPUBuffer;
+    /**
+     * Each voxel is a u32 value.
+     */
+    voxelBuffer: GPUBuffer;
+    /**
+     * Atomic counters.
+     * Actually just one value, effectively index of quad.
+     */
+    counterBuffer: GPUBuffer;
+    /**
+     * Buffer of vertex data. Currently just vec3 for position.
+     */
+    vertexBuffer: GPUBuffer;
+    /**
+     * Buffer of index data.
+     */
+    indexBuffer: GPUBuffer;
+    /**
+     * Buffer of vertex data, mapped to CPU for debug use.
+     */
+    mappedVertexBuffer: GPUBuffer;
+    /**
+     * Buffer of index data, mapped to CPU for debug use.
+     */
+    mappedIndexBuffer: GPUBuffer;
 
     constructor(
         device: GPUDevice,
         queue: GPUQueue,
-        bytesPerVertex: number = 4 * 3
-        // squareCount: number = 1,
     ) {
         this.device = device;
         this.queue = queue;
 
-        this.bytesPerVertex = bytesPerVertex;
-        // this.squareCount = squareCount; // TODO: using dummy for now.
+        this.maxSquareCount = dummyWidth * dummyHeight;
+        this.maxVertexCount = this.maxSquareCount * 4;
 
-        this.squareCount = dummyWidth * dummyHeight;
-
-        this.vertexCount = this.squareCount * 4;
+        // 2 triangles for each square.
+        this.maxIndexCount = this.maxSquareCount * 6;
     }
 
     async start() {
@@ -48,39 +77,50 @@ export default class SquareGenerator {
 
     async initializeResources() {
 
-        // Buffer to be written to on the CPU.
-        this.writeBuffer = createBufferFromArray(
+        this.mappedVoxelBuffer = createBufferFromArray(
             this.device,
             dummyInput,
             // Going to write to this buffer from the CPU, and copy it to another buffer.
             GPUBufferUsage.MAP_WRITE | GPUBufferUsage.COPY_SRC
         );
 
-        this.inputBuffer = this.device.createBuffer({
-            size: this.writeBuffer.size,
-            // Going copy from another buffer, and read from on the shader.
+        this.voxelBuffer = this.device.createBuffer({
+            size: this.mappedVoxelBuffer.size,
+            // Read from this on the shader, and copy from another buffer.
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         });
 
-        this.countBuffer = this.device.createBuffer({
+        this.counterBuffer = this.device.createBuffer({
             // 4 bytes for single u32 value.
-            size: 4,
+            size: 4 * 2,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
             mappedAtCreation: true,
         });
-        // Initialise counter to 0.
-        new Uint32Array(this.countBuffer.getMappedRange())[0] = 0;
-        this.countBuffer.unmap();
+        // Initialise counters to 0.
+        new Uint32Array(this.counterBuffer.getMappedRange()).set([0, 0]);
+        this.counterBuffer.unmap();
 
-        this.outputBuffer = this.device.createBuffer({
-            size: this.inputBuffer.size,
+        this.indexBuffer = this.device.createBuffer({
+            // Although we don't need all 4 bytes, WGSL cannot read u16.
+            size: 4 * this.maxVertexCount,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+        });
+
+        this.vertexBuffer = this.device.createBuffer({
+            size: this.maxVertexCount * this.bytesPerVertex,
             // Going to write to on the shader, and copy to another buffer.
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
         });
 
-        // Buffer to be read on the CPU.
-        this.readBuffer = this.device.createBuffer({
-            size: this.inputBuffer.size,
+        // -- These buffers exist for debugging --
+        this.mappedVertexBuffer = this.device.createBuffer({
+            size: this.vertexBuffer.size,
+            // Going to copy a buffer to this one, and read from it on the CPU.
+            usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+        });
+
+        this.mappedIndexBuffer = this.device.createBuffer({
+            size: this.indexBuffer.size,
             // Going to copy a buffer to this one, and read from it on the CPU.
             usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
         });
@@ -105,22 +145,28 @@ export default class SquareGenerator {
         const bindGroup = this.device.createBindGroup({
             layout: bindGroupLayout,
             entries: [
-                { // Input
+                {
                     binding: 0,
                     resource: {
-                        buffer: this.inputBuffer,
+                        buffer: this.voxelBuffer,
                     },
                 },
-                { // Output
+                {
                     binding: 1,
                     resource: {
-                        buffer: this.outputBuffer,
+                        buffer: this.counterBuffer,
                     },
                 },
-                { // Count
+                {
                     binding: 2,
                     resource: {
-                        buffer: this.countBuffer,
+                        buffer: this.vertexBuffer,
+                    },
+                },
+                {
+                    binding: 3,
+                    resource: {
+                        buffer: this.indexBuffer,
                     },
                 },
             ],
@@ -130,9 +176,9 @@ export default class SquareGenerator {
 
         // Copy from writeBuffer to inputBuffer.
         commandEncoder.copyBufferToBuffer(
-            this.writeBuffer, 0,
-            this.inputBuffer, 0,
-            this.writeBuffer.size
+            this.mappedVoxelBuffer, 0,
+            this.voxelBuffer, 0,
+            this.mappedVoxelBuffer.size
         );
 
         // Set up the compute pass, which will read from inputBuffer and write to outputBuffer.
@@ -144,21 +190,35 @@ export default class SquareGenerator {
         pass.dispatchWorkgroups(1, 1);
         pass.end();
 
-        // Copy from outputBuffer to readBuffer.
+        /*
+        // -- debug --
+        // Copy to mappable buffers for debugging.
         commandEncoder.copyBufferToBuffer(
-            this.outputBuffer, 0,
-            this.readBuffer, 0,
-            this.outputBuffer.size
+            this.vertexBuffer, 0,
+            this.mappedVertexBuffer, 0,
+            this.vertexBuffer.size
         );
+        commandEncoder.copyBufferToBuffer(
+            this.indexBuffer, 0,
+            this.mappedIndexBuffer, 0,
+            this.indexBuffer.size
+        );
+        // -- /debug --
+        */
 
         // Submit commands.
         const commands = commandEncoder.finish();
         this.queue.submit([commands]);
 
+        /*
         // Request read access to the output buffer, and wait to get it.
-        await this.readBuffer.mapAsync(GPUMapMode.READ);
-        const readBufferContent = this.readBuffer.getMappedRange();
+        await this.mappedVertexBuffer.mapAsync(GPUMapMode.READ);
+        await this.mappedIndexBuffer.mapAsync(GPUMapMode.READ);
 
-        console.log('after compute:', new Uint32Array(readBufferContent));
+        console.log('after compute.',
+            new Float32Array(this.mappedVertexBuffer.getMappedRange()),
+            new Uint32Array(this.mappedIndexBuffer.getMappedRange())
+        );
+        */
     }
 }

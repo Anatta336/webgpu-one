@@ -53,7 +53,8 @@ let config: webpack.Configuration = {
     ],
     optimization: {
         minimize: isProduction ? true : false
-    }
+    },
+    devtool: isProduction ? false : 'inline-source-map',
 };
 
 /**

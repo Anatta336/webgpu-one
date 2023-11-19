@@ -4,10 +4,9 @@ struct VSOut {
 };
 
 @vertex
-fn main(@location(0) inPos: vec3f,
-        @location(1) inColor: vec3f) -> VSOut {
+fn main(@location(0) inPos: vec4f) -> VSOut {
     var vsOut: VSOut;
-    vsOut.Position = vec4f(inPos, 1);
-    vsOut.color = inColor;
+    vsOut.Position = vec4f(inPos.xyz * 0.2, 1.0);
+    vsOut.color = vec3f(0.7, 0.3, 0.5);
     return vsOut;
 }

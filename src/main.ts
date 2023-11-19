@@ -14,7 +14,11 @@ sizer.start();
 
 document.getElementById('button-generate').addEventListener('click', () => {
     const generator = new SquareGenerator(renderer.device, renderer.queue);
-    generator.start();
+
+    generator.start().then(() => {
+        console.log('Generated. Copying to buffers.');
+        renderer.copyInMeshBuffers(generator.vertexBuffer, generator.indexBuffer, 5 * 6);
+    });
 });
 
 document.getElementById('button-octavia').addEventListener('click', () => {
