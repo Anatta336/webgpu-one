@@ -19,9 +19,7 @@ WebGPU needs a secure context. `localhost` is treated as secure (even though it'
 ## Notes
 
 ### Adapter
-`navigator.gpu.requestAdapter()` gives a `GPUAdapter` that has `.features` and `.limits`. Very useful!
-
-If a device has multiple adapters (most commonly a dedicated and an integrated GPU) how do we pick which to use?
+`navigator.gpu.requestAdapter()` gives a `GPUAdapter` that has `.features` and `.limits`. In theory this can give one of multiple adapters. Haven't tested how that works yet.
 
 ### Pipeline
 - One per pass.
@@ -55,6 +53,7 @@ Bind group represents the actual input/output data for a shader.
 ## References
 - https://www.w3.org/TR/webgpu/
 - https://www.w3.org/TR/WGSL/
+- https://github.com/greggman/wgpu-matrix
 - https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API
 - https://cohost.org/mcc/post/1406157-i-want-to-talk-about
 - https://alain.xyz/blog/raw-webgpu
@@ -65,8 +64,8 @@ Bind group represents the actual input/output data for a shader.
 
 ## TODO
 - [x] Compute generate squares in vertex and index buffer.
-- [ ] Static perspective camera.
-- [ ] Fly camera.
+- [x] Static perspective camera.
+- [x] Fly camera.
 - [ ] Simple cubes.
 - [ ] Nicer rendering.
 - [ ] Voxel generation, compute.

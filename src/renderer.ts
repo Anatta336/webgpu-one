@@ -1,7 +1,8 @@
 import vertShaderCode from './shaders/triangle.vert.wgsl';
 import fragShaderCode from './shaders/triangle.frag.wgsl';
-import { createBufferFromArray } from './bufferHelpers';
-import { positionBufferDesc } from './sharedBufferLayouts';
+import { positionAttribDesc } from './sharedBufferLayouts';
+import Observer, { SimpleCallback } from './observer';
+import Camera from './camera/base';
 
 const basicSquarePositions = new Float32Array([
      1.0, -1.0,  0.0, 1.0, // bottom right
@@ -28,6 +29,10 @@ const maxIndexCount = maxQuadCount * 6;
 
 export default class Renderer {
     canvas: HTMLCanvasElement;
+    camera: Camera;
+
+    // Observer
+    onReady: Observer<SimpleCallback> = new Observer();
 
     // API Data Structures
     adapter: GPUAdapter;
@@ -36,22 +41,29 @@ export default class Renderer {
 
     // Frame Backings
     context: GPUCanvasContext;
-    colorTexture: GPUTexture;
-    colorTextureView: GPUTextureView;
+    targetColorView: GPUTextureView;
     depthTexture: GPUTexture;
     depthTextureView: GPUTextureView;
 
     // Resources
     positionBuffer: GPUBuffer;
     indexBuffer: GPUBuffer;
+    uniformBuffer: GPUBuffer;
+
+    uniformBindGroup: GPUBindGroup;
+
     vertModule: GPUShaderModule;
     fragModule: GPUShaderModule;
     pipeline: GPURenderPipeline;
 
     indexCount = (3 * 2) * 6;
 
-    constructor(canvas: HTMLCanvasElement) {
+    constructor(
+        canvas: HTMLCanvasElement,
+        camera: Camera,
+    ) {
         this.canvas = canvas;
+        this.camera = camera;
     }
 
     // Start the rendering engine
@@ -59,8 +71,10 @@ export default class Renderer {
         if (await this.initializeAPI()) {
             this.resizeBackings();
             await this.initializeResources();
-            this.render();
+
+            this.onReady.notify();
         }
+        // TODO: Handle failure by throwing which can be caught in a .catch()?
     }
 
     // Initialize WebGPU
@@ -112,6 +126,43 @@ export default class Renderer {
 
         this.indexCount = basicSquareIndices.length;
 
+        // Uniform Buffer
+        this.uniformBuffer = this.device.createBuffer({
+            size: 4 * 4 * 4, // 4x4 matrix of 4-byte floats.
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+
+        const uniformBufferBindingLayout: GPUBufferBindingLayout = {
+            type: 'uniform',
+            hasDynamicOffset: false,
+            minBindingSize: 4 * 4 * 4,
+        };
+
+        const bindGroupLayout = this.device.createBindGroupLayout({
+            entries: [{
+                binding: 0,
+                visibility: GPUShaderStage.VERTEX,
+                buffer: uniformBufferBindingLayout,
+            }],
+        });
+
+        this.uniformBindGroup = this.device.createBindGroup({
+            layout: bindGroupLayout,
+            entries: [{
+                binding: 0,
+                resource: {
+                    buffer: this.uniformBuffer,
+                },
+            }],
+        });
+
+        // Position buffer layout.
+        const positionBufferDesc: GPUVertexBufferLayout = {
+            attributes: [positionAttribDesc],
+            arrayStride: 4 * 4, // 4 bytes per float, 4 floats per vertex.
+            stepMode: 'vertex'
+        };
+
         // Crate shader modules, pulling in code from imported files.
         this.vertModule = this.device.createShaderModule({
             code: vertShaderCode
@@ -131,7 +182,11 @@ export default class Renderer {
         };
 
         // Uniform Data
-        const pipelineLayoutDesc = { bindGroupLayouts: [] };
+        const pipelineLayoutDesc: GPUPipelineLayoutDescriptor = {
+            bindGroupLayouts: [
+                bindGroupLayout,
+            ],
+        };
         const layout = this.device.createPipelineLayout(pipelineLayoutDesc);
 
         // Shader Stages
@@ -194,7 +249,7 @@ export default class Renderer {
         });
     }
 
-    // Resize swapchain, frame buffer attachments
+    // Resize swapchain, frame buffer attachments, camera aspect.
     resizeBackings() {
         if (!this.device) {
             // Haven't initialized yet.
@@ -222,13 +277,15 @@ export default class Renderer {
 
         this.depthTexture = this.device.createTexture(depthTextureDesc);
         this.depthTextureView = this.depthTexture.createView();
+
+        this.camera?.setAspectFromDimensions(this.canvas.width, this.canvas.height);
     }
 
     // Write commands to send to the GPU.
     encodeCommands() {
         const colorAttachment: GPURenderPassColorAttachment = {
             // What texture to use as the render target (via a GPUTextureView)
-            view: this.colorTextureView,
+            view: this.targetColorView,
 
             clearValue: { r: 0, g: 0, b: 0, a: 1 },
             loadOp: 'clear',
@@ -250,14 +307,28 @@ export default class Renderer {
         // Define the render pass, which could output to multiple targets.
         const renderPassDesc: GPURenderPassDescriptor = {
             colorAttachments: [colorAttachment],
-            depthStencilAttachment: depthAttachment
+            depthStencilAttachment: depthAttachment,
         };
+
+        // Write camera's MVP matrix to the uniform buffer.
+        const modelViewProjection = this.camera.getModelViewProjectionMatrixAsFloat32Array();
+
+        this.queue.writeBuffer(
+            this.uniformBuffer,
+            0,
+            modelViewProjection.buffer,
+            modelViewProjection.byteOffset,
+            modelViewProjection.byteLength
+        );
 
         const commandEncoder = this.device.createCommandEncoder();
 
         // Encode drawing commands
         const passEncoder = commandEncoder.beginRenderPass(renderPassDesc);
         passEncoder.setPipeline(this.pipeline);
+
+        passEncoder.setBindGroup(0, this.uniformBindGroup);
+
         passEncoder.setViewport(
             0,
             0,
@@ -283,13 +354,12 @@ export default class Renderer {
 
     render = () => {
         // Acquire next image from context, and create a GPUTextureView of it.
-        this.colorTexture = this.context.getCurrentTexture();
-        this.colorTextureView = this.colorTexture.createView();
+        const targetColorTexture = this.context.getCurrentTexture();
+        this.targetColorView = targetColorTexture.createView();
+
+
 
         // Do our little pipeline.
         this.encodeCommands();
-
-        // Ask to be called again when the next frame is due.
-        requestAnimationFrame(this.render);
     };
 }
