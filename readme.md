@@ -66,16 +66,24 @@ Bind group represents the actual input/output data for a shader.
 - [x] Compute generate squares in vertex and index buffer.
 - [x] Static perspective camera.
 - [x] Fly camera.
-- [ ] Simple cubes.
+- [x] Simple cubes.
+- [ ] Fix camera orientation.
+- [ ] Large volume.
 - [ ] Nicer rendering.
-- [ ] Voxel generation, compute.
-- [ ] Placement, compute.
+- [ ] Voxel generation via compute.
+- [ ] Editing, via compute.
 
-Interaction with voxel data could be via compute shader, or just like:
+## Ideas
+- Rather than flat cube faces, per-block meshes? Sounds like hard work. Textures though.
+
+- Something with LoD at long range. Imposters could be good.
+
+- Interaction with voxel data could be via compute shader, or just like:
 ```
 device.queue.writeBuffer(
     voxelBuffer,
     31 * 4,
-    [1]
+    new Uint8Array([1]).buffer
 );
 ```
+Expect it's faster to do it via Compute? Strongly suspect don't want to be copying entire buffers back and forth between CPU and GPU.

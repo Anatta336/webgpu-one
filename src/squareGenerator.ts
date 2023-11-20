@@ -3,27 +3,45 @@ import computeShaderCode from './shaders/square.compute.wgsl';
 
 const dummyInput = new Uint32Array([
     // First 3 values are dimensions.
-    3, 3, 1,
+    4, 4, 4,
 
-    // Then the actual voxel data.
-    0, 1, 1,
-    1, 1, 0,
-    0, 1, 0,
+    // Then the actual voxel data. Starting from the bottom layer.
+    0, 1, 1, 0,
+    1, 1, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 0, 0,
+
+    0, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 1, 1, 0,
+    0, 0, 0, 0,
+
+    0, 0, 0, 0,
+    0, 0, 0, 1,
+    0, 1, 0, 0,
+    0, 0, 0, 0,
+
+    0, 1, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 0,
 ]);
-const dummyWidth = 3;
-const dummyHeight = 3;
 
 export default class SquareGenerator {
 
     device: GPUDevice;
     queue: GPUQueue;
 
-    maxSquareCount: number;
-    maxVertexCount: number;
-    maxIndexCount: number;
+    readonly maxQuadCount: number;
+    readonly maxVertexCount: number;
+    readonly maxIndexCount: number;
+
+    highestIndex: number = 0;
 
     // 3 floats for position.
     bytesPerVertex: number = 4 * 3;
+
+    indicesPerQuad: number = 6;
 
     /**
      * Voxel buffer to be mapped and written to by CPU.
@@ -36,7 +54,7 @@ export default class SquareGenerator {
     voxelBuffer: GPUBuffer;
     /**
      * Atomic counters.
-     * Actually just one value, effectively index of quad.
+     * Actually just one value: index of quad.
      */
     counterBuffer: GPUBuffer;
     /**
@@ -47,6 +65,10 @@ export default class SquareGenerator {
      * Buffer of index data.
      */
     indexBuffer: GPUBuffer;
+    /**
+     * Mapped version of counterBuffer to read from after completing operation.
+     */
+    mappedCounterBuffer: GPUBuffer;
     /**
      * Buffer of vertex data, mapped to CPU for debug use.
      */
@@ -63,16 +85,22 @@ export default class SquareGenerator {
         this.device = device;
         this.queue = queue;
 
-        this.maxSquareCount = dummyWidth * dummyHeight;
-        this.maxVertexCount = this.maxSquareCount * 4;
-
-        // 2 triangles for each square.
-        this.maxIndexCount = this.maxSquareCount * 6;
+        // TODO: check limits for max count.
+        // TODO: more significantly, handle needing to go over the max.
+        this.maxQuadCount = 1024;
+        this.maxVertexCount = this.maxQuadCount * 4; // 4 vertices for each quad.
+        this.maxIndexCount = this.maxQuadCount * 6; // 2 triangles for each quad.
     }
 
-    async start() {
+    async start(): Promise<GeneratorResult> {
         await this.initializeResources();
         await this.performCompute();
+
+        return {
+            vertexBuffer: this.vertexBuffer,
+            indexBuffer: this.indexBuffer,
+            indexCount: this.highestIndex,
+        };
     }
 
     async initializeResources() {
@@ -99,6 +127,12 @@ export default class SquareGenerator {
         // Initialise counters to 0.
         new Uint32Array(this.counterBuffer.getMappedRange()).set([0, 0]);
         this.counterBuffer.unmap();
+
+        this.mappedCounterBuffer = this.device.createBuffer({
+            size: this.counterBuffer.size,
+            // Going to copy the counterBuffer to this one, and read from it on the CPU.
+            usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+        });
 
         this.indexBuffer = this.device.createBuffer({
             // Although we don't need all 4 bytes, WGSL cannot read u16.
@@ -190,6 +224,13 @@ export default class SquareGenerator {
         pass.dispatchWorkgroups(1, 1);
         pass.end();
 
+        // Copy counter buffer to a mappable buffer.
+        commandEncoder.copyBufferToBuffer(
+            this.counterBuffer, 0,
+            this.mappedCounterBuffer, 0,
+            this.counterBuffer.size
+        );
+
         /*
         // -- debug --
         // Copy to mappable buffers for debugging.
@@ -210,6 +251,9 @@ export default class SquareGenerator {
         const commands = commandEncoder.finish();
         this.queue.submit([commands]);
 
+        await this.mappedCounterBuffer.mapAsync(GPUMapMode.READ);
+        this.highestIndex = new Uint32Array(this.mappedCounterBuffer.getMappedRange())[0] * 6;
+
         /*
         // Request read access to the output buffer, and wait to get it.
         await this.mappedVertexBuffer.mapAsync(GPUMapMode.READ);
@@ -222,3 +266,9 @@ export default class SquareGenerator {
         */
     }
 }
+
+export type GeneratorResult = {
+    vertexBuffer: GPUBuffer;
+    indexBuffer: GPUBuffer;
+    indexCount: number;
+};

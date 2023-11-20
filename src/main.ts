@@ -1,6 +1,6 @@
 import Renderer from './renderer';
 import CanvasSizer from './canvasSizer';
-import SquareGenerator from './squareGenerator';
+import SquareGenerator, { GeneratorResult } from './squareGenerator';
 import Octavia from './octavia';
 import { createInputHandler } from './input';
 import WASDCamera from './camera/wasd';
@@ -10,7 +10,7 @@ const container = document.getElementById('gfx-container') as HTMLElement;
 const canvas = document.getElementById('gfx') as HTMLCanvasElement;
 
 const camera = new WASDCamera({
-    position: vec3.fromValues(0, 0, 5),
+    position: vec3.fromValues(-5, 0, -1),
     target: vec3.fromValues(0, 0, 0),
 });
 
@@ -29,6 +29,7 @@ renderer.onReady.addCallback(() => {
     requestAnimationFrame(gameLoop);
 });
 
+// Warm up the camera.
 camera.update(0, inputHandler());
 
 function gameLoop() {
@@ -48,9 +49,12 @@ function gameLoop() {
 document.getElementById('button-generate').addEventListener('click', () => {
     const generator = new SquareGenerator(renderer.device, renderer.queue);
 
-    generator.start().then(() => {
-        console.log('Generated. Copying to buffers.');
-        renderer.copyInMeshBuffers(generator.vertexBuffer, generator.indexBuffer, 5 * 6);
+    generator.start().then((result: GeneratorResult) => {
+        renderer.copyInMeshBuffers(
+            result.vertexBuffer,
+            result.indexBuffer,
+            result.indexCount
+        );
     });
 });
 

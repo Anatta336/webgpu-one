@@ -23,7 +23,8 @@ const basicSquareIndices = new Uint32Array([
     1, 2, 3,
 ]);
 
-const maxQuadCount = 256;
+// TODO: This is not the real max quad count.
+const maxQuadCount = 1024;
 const maxVertexCount = maxQuadCount * 4;
 const maxIndexCount = maxQuadCount * 6;
 
@@ -31,7 +32,7 @@ export default class Renderer {
     canvas: HTMLCanvasElement;
     camera: Camera;
 
-    // Observer
+    // To let others know when the renderer has finished init.
     onReady: Observer<SimpleCallback> = new Observer();
 
     // API Data Structures
@@ -56,6 +57,9 @@ export default class Renderer {
     fragModule: GPUShaderModule;
     pipeline: GPURenderPipeline;
 
+    /**
+     * Number of indices to draw. Indices in the buffer beyond this will be ignored.
+     */
     indexCount = (3 * 2) * 6;
 
     constructor(
@@ -356,8 +360,6 @@ export default class Renderer {
         // Acquire next image from context, and create a GPUTextureView of it.
         const targetColorTexture = this.context.getCurrentTexture();
         this.targetColorView = targetColorTexture.createView();
-
-
 
         // Do our little pipeline.
         this.encodeCommands();
